@@ -6,7 +6,6 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// MARK: - Math Utilities
 
 inline float2x2 rotate2d(float angle) {
     float s = sin(angle);
@@ -14,38 +13,18 @@ inline float2x2 rotate2d(float angle) {
     return float2x2(c, -s, s, c);
 }
 
-// MARK: - SDF Functions
-
-// Rounded Rectangle
 inline float sdfRRect(float2 p, float2 b, float r) {
     float2 q = abs(p) - b + r;
     return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
 }
 
-// Squircle (Superellipse approximation)
 inline float sdfSquircle(float2 p, float2 b, float r) {
-    // A simple approximation: max(abs(x), abs(y))^n ...
-    // But the Flutter shader used a specific formula:
-    // vec2 q = abs(p) - b + r;
-    // vec2 maxQ = max(q, 0.0);
-    // return min(max(q.x, q.y), 0.0) + sqrt(maxQ.x * maxQ.x + maxQ.y * maxQ.y) - r;
-    // Wait, the Flutter shader `sdfSquircle` implementation was identical to `sdfRRect` but maybe they intended different curvature?
-    // Let's check the Flutter code again.
-    // "sdfSquircle... return min(max(q.x, q.y), 0.0) + sqrt(maxQ.x * maxQ.x + maxQ.y * maxQ.y) - r;"
-    // This looks like standard rounded rect. True squircles are x^4 + y^4 = r^4.
-    // Let's use the Flutter implementation for consistency.
     float2 q = abs(p) - b + r;
     float2 maxQ = max(q, 0.0);
     return min(max(q.x, q.y), 0.0) + length(maxQ) - r;
 }
 
-// Ellipse
 inline float sdfEllipse(float2 p, float2 r) {
-    // Approx distance to ellipse
-    // k1 = length(p/r); k2 = length(p/(r*r))
-    // return k1*(k1-1.0)/k2;
-    
-    // Safety check
     float2 r_safe = max(r, float2(1e-4));
     
     float2 invR = 1.0 / r_safe;
@@ -60,10 +39,6 @@ inline float sdfEllipse(float2 p, float2 r) {
     return (k1 * (k1 - 1.0)) / max(k2, 1e-4);
 }
 
-// MARK: - Blending
-
-// Polynomial Smooth Min (smin)
-// Using mixing factor k
 inline float smoothUnion(float d1, float d2, float k) {
     if (k <= 0.0) {
         return min(d1, d2);
@@ -72,18 +47,13 @@ inline float smoothUnion(float d1, float d2, float k) {
     return min(d1, d2) - h * h * 0.25 / k;
 }
 
-// MARK: - Rendering Functions (Ported from Flutter)
-
 constant float3 LUMA_WEIGHTS = float3(0.299, 0.587, 0.114);
 
-// Determine highlight color with gradual transition from colored to white based on darkness
 inline float3 getHighlightColor(float3 backgroundColor, float targetBrightness) {
     float luminance = dot(backgroundColor, LUMA_WEIGHTS);
-    
-    // Fast saturation approximation
+
     float maxComponent = max(max(backgroundColor.r, backgroundColor.g), backgroundColor.b);
-    
-    // Combined color influence factor
+
     float lum = luminance * 2.5;
     float lumFactor = lum / (1.0 + lum);
     
@@ -91,14 +61,12 @@ inline float3 getHighlightColor(float3 backgroundColor, float targetBrightness) 
     float satFactor = sat / (1.0 + sat);
     
     float colorInfluence = lumFactor * satFactor;
-    
-    // Normalize and tint
+
     float3 tinted = (backgroundColor / max(luminance, 0.001)) * targetBrightness;
     
     return mix(float3(targetBrightness), tinted, colorInfluence);
 }
 
-// Calculate height/depth of the liquid surface
 inline float getHeight(float sd, float thickness) {
     if (sd >= 0.0 || thickness <= 0.0) {
         return 0.0;
@@ -111,7 +79,6 @@ inline float getHeight(float sd, float thickness) {
     return sqrt(max(0.0, thickness * thickness - x * x));
 }
 
-// Calculate lighting effects
 inline float3 calculateLighting(
     float2 uv,
     float3 normal,
@@ -131,7 +98,6 @@ inline float3 calculateLighting(
     float thicknessFactor = clamp((thickness - 5.0) * 0.5, 0.0, 1.0);
     if (thicknessFactor < 0.01) return float3(0.0);
 
-    // Rim lighting
     float rimWidth = 1.5;
     float k = 0.89;
     float x = sd / rimWidth;
@@ -154,7 +120,6 @@ inline float3 calculateLighting(
     return totalRimLight * thicknessFactor * shape;
 }
 
-// Calculate refraction with chromatic aberration
 inline float4 calculateRefraction(
     float2 screenUV,
     float3 normal,
@@ -175,16 +140,13 @@ inline float4 calculateRefraction(
     float3 baseRefract = refract(incident, normal, invRefractiveIndex);
     float baseRefractLength = (height + baseHeight) / max(0.001, abs(baseRefract.z));
     float2 baseDisplacement = baseRefract.xy * baseRefractLength;
-    
-    // No CA
+
     if (chromaticAberration < 0.001) {
         float2 refractedUV = screenUV + baseDisplacement * invUSize;
-        // Clamp to avoid edge artifacts
         refractedUV = clamp(refractedUV, float2(0.001), float2(0.999));
         return backgroundTexture.sample(s, refractedUV);
     }
-    
-    // CA
+
     float dispersionStrength = chromaticAberration * 0.5;
     float2 redOffset = baseDisplacement * (1.0 + dispersionStrength);
     float2 blueOffset = baseDisplacement * (1.0 - dispersionStrength);
@@ -226,7 +188,6 @@ inline float4 applyGlassColor(float4 liquidColor, float4 glassColor) {
     return finalColor;
 }
 
-// Complete Rendering Pipeline
 inline float4 renderLiquidGlass(
     float2 screenUV,
     float2 uSize,
@@ -256,13 +217,9 @@ inline float4 renderLiquidGlass(
     
     finalColor.rgb += lighting;
     finalColor.rgb = applySaturation(finalColor.rgb, saturation);
-    
-    // Mix with background based on alpha (foregroundAlpha is our shape mask)
-    // Sample original background for blending at the edges
+
     float4 bgSample = backgroundTexture.sample(s, screenUV);
-    
-    // Mix background and glass effect based on shape alpha
-    // This provides smooth anti-aliased edges by transitioning to the original background
+
     return mix(bgSample, finalColor, foregroundAlpha);
 }
 

@@ -195,7 +195,6 @@ extension LiquidGlassSlider {
     }
 
     private func updateThumbPosition() {
-        // Handled in layoutSubviews now
     }
 
     private func animateToGlassState(_ isGlass: Bool) {
