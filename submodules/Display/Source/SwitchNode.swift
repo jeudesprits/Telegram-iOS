@@ -1,21 +1,7 @@
 import Foundation
 import UIKit
 import AsyncDisplayKit
-
-private final class SwitchNodeViewLayer: CALayer {
-    override func setNeedsDisplay() {
-    }
-}
-
-private final class SwitchNodeView: UISwitch {
-    override class var layerClass: AnyClass {
-        if #available(iOS 26.0, *) {
-            return super.layerClass
-        } else {
-            return SwitchNodeViewLayer.self
-        }
-    }
-}
+import LiquidGlass
 
 open class SwitchNode: ASDisplayNode {
     public var valueUpdated: ((Bool) -> Void)?
@@ -64,7 +50,11 @@ open class SwitchNode: ASDisplayNode {
         super.init()
         
         self.setViewBlock({
-            return SwitchNodeView()
+            if #available(iOS 26.0, *) {
+                return UISwitch()
+            } else {
+                return LiquidGlassSwitch()
+            }
         })
     }
     
@@ -90,11 +80,7 @@ open class SwitchNode: ASDisplayNode {
     }
     
     override open func calculateSizeThatFits(_ constrainedSize: CGSize) -> CGSize {
-        if #available(iOS 26.0, *) {
-            return CGSize(width: 63.0, height: 28.0)
-        } else {
-            return CGSize(width: 51.0, height: 31.0)
-        }
+        return CGSize(width: 63.0, height: 28.0)
     }
     
     @objc func switchValueChanged(_ view: UISwitch) {

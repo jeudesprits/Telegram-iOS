@@ -5,6 +5,7 @@ import AsyncDisplayKit
 import TelegramPresentationData
 import LegacyComponents
 import ComponentFlow
+import LiquidGlass
 
 public final class SliderComponent: Component {
     public final class Discrete: Equatable {
@@ -120,11 +121,11 @@ public final class SliderComponent: Component {
     final class SliderView: UISlider {
         
     }
-    
+
     public final class View: UIView {
         private var nativeSliderView: SliderView?
-        private var sliderView: TGPhotoEditorSliderView?
-        
+        private var sliderView: LiquidGlassSlider?
+
         private var component: SliderComponent?
         private weak var state: EmptyComponentState?
         
@@ -169,7 +170,7 @@ public final class SliderComponent: Component {
                     
                     self.addSubview(sliderView)
                     self.nativeSliderView = sliderView
-                    
+
                     switch component.content {
                     case let .continuous(continuous):
                         sliderView.minimumValue = Float(continuous.minValue ?? 0.0)
@@ -188,115 +189,49 @@ public final class SliderComponent: Component {
                 }
                 sliderView.minimumTrackTintColor = component.trackForegroundColor
                 sliderView.maximumTrackTintColor = component.trackBackgroundColor
-                
+
                 transition.setFrame(view: sliderView, frame: CGRect(origin: CGPoint(x: 0.0, y: 0.0), size: CGSize(width: availableSize.width, height: 44.0)))
             } else {
-                var internalIsTrackingUpdated: ((Bool) -> Void)?
-                if let isTrackingUpdated = component.isTrackingUpdated {
-                    internalIsTrackingUpdated = { [weak self] isTracking in
-                        if let self {
-                            if !"".isEmpty {
-                                if isTracking {
-                                    self.sliderView?.bordered = true
-                                } else {
-                                    DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + 0.1, execute: { [weak self] in
-                                        self?.sliderView?.bordered = false
-                                    })
-                                }
-                            }
-                        }
-                        isTrackingUpdated(isTracking)
-                    }
-                }
-                
-                let sliderView: TGPhotoEditorSliderView
+
+                let sliderView: LiquidGlassSlider
                 if let current = self.sliderView {
                     sliderView = current
                 } else {
-                    sliderView = TGPhotoEditorSliderView()
-                    sliderView.enablePanHandling = true
-                    if let knobSize = component.knobSize {
-                        sliderView.lineSize = knobSize + 4.0
-                    } else {
-                        sliderView.lineSize = 4.0
-                    }
-                    sliderView.trackCornerRadius = sliderView.lineSize * 0.5
-                    sliderView.dotSize = 5.0
-                    sliderView.minimumValue = 0.0
-                    sliderView.startValue = 0.0
-                    sliderView.disablesInteractiveTransitionGestureRecognizer = true
-                    
-                    switch component.content {
-                    case let .discrete(discrete):
-                        sliderView.maximumValue = CGFloat(discrete.valueCount - 1)
-                        sliderView.positionsCount = discrete.valueCount
-                        sliderView.useLinesForPositions = true
-                        sliderView.markPositions = discrete.markPositions
-                    case .continuous:
-                        sliderView.maximumValue = 1.0
-                    }
-                    
-                    sliderView.backgroundColor = nil
-                    sliderView.isOpaque = false
-                    sliderView.backColor = component.trackBackgroundColor
-                    sliderView.startColor = component.trackBackgroundColor
-                    sliderView.trackColor = component.trackForegroundColor
-                    if let knobSize = component.knobSize {
-                        sliderView.knobImage = generateImage(CGSize(width: 40.0, height: 40.0), rotatedContext: { size, context in
-                            context.clear(CGRect(origin: CGPoint(), size: size))
-                            context.setShadow(offset: CGSize(width: 0.0, height: -3.0), blur: 12.0, color: UIColor(white: 0.0, alpha: 0.25).cgColor)
-                            if let knobColor = component.knobColor {
-                                context.setFillColor(knobColor.cgColor)
-                            } else {
-                                context.setFillColor(UIColor.white.cgColor)
-                            }
-                            context.fillEllipse(in: CGRect(origin: CGPoint(x: floor((size.width - knobSize) * 0.5), y: floor((size.width - knobSize) * 0.5)), size: CGSize(width: knobSize, height: knobSize)))
-                        })
-                    } else {
-                        sliderView.knobImage = generateImage(CGSize(width: 40.0, height: 40.0), rotatedContext: { size, context in
-                            context.clear(CGRect(origin: CGPoint(), size: size))
-                            context.setShadow(offset: CGSize(width: 0.0, height: -3.0), blur: 12.0, color: UIColor(white: 0.0, alpha: 0.25).cgColor)
-                            context.setFillColor(UIColor.white.cgColor)
-                            context.fillEllipse(in: CGRect(origin: CGPoint(x: 6.0, y: 6.0), size: CGSize(width: 28.0, height: 28.0)))
-                        })
-                    }
-                    
-                    sliderView.frame = CGRect(origin: CGPoint(x: 0.0, y: 0.0), size: size)
-                    sliderView.hitTestEdgeInsets = UIEdgeInsets(top: -sliderView.frame.minX, left: 0.0, bottom: 0.0, right: -sliderView.frame.minX)
-                    
-                    
+                    sliderView = LiquidGlassSlider()
                     sliderView.disablesInteractiveTransitionGestureRecognizer = true
                     sliderView.addTarget(self, action: #selector(self.sliderValueChanged), for: .valueChanged)
                     sliderView.layer.allowsGroupOpacity = true
+
                     self.sliderView = sliderView
                     self.addSubview(sliderView)
+
+                    switch component.content {
+                    case let .continuous(continuous):
+                        sliderView.minimumValue = Float(continuous.minValue ?? 0.0)
+                        sliderView.maximumValue = 1.0
+                    case let .discrete(discrete):
+                        sliderView.minimumValue = 0.0
+                        sliderView.maximumValue = Float(discrete.valueCount - 1)
+                    }
+
+                    switch component.content {
+                    case let .continuous(continuous):
+                        sliderView.value = Float(continuous.value)
+                    case let .discrete(discrete):
+                        sliderView.value = Float(discrete.value)
+                    }
                 }
-                sliderView.lowerBoundTrackColor = component.minTrackForegroundColor
+
                 switch component.content {
-                case let .discrete(discrete):
-                    sliderView.value = CGFloat(discrete.value)
-                    if let minValue = discrete.minValue {
-                        sliderView.lowerBoundValue = CGFloat(minValue)
-                    } else {
-                        sliderView.lowerBoundValue = 0.0
-                    }
                 case let .continuous(continuous):
-                    sliderView.value = continuous.value
-                    if let minValue = continuous.minValue {
-                        sliderView.lowerBoundValue = minValue
-                    } else {
-                        sliderView.lowerBoundValue = 0.0
-                    }
+                    sliderView.value = Float(continuous.value)
+                case let .discrete(discrete):
+                    sliderView.value = Float(discrete.value)
                 }
-                sliderView.interactionBegan = {
-                    internalIsTrackingUpdated?(true)
-                }
-                sliderView.interactionEnded = {
-                    internalIsTrackingUpdated?(false)
-                }
-                
+                sliderView.minimumTrackTintColor = component.trackForegroundColor
+                sliderView.maximumTrackTintColor = component.trackBackgroundColor
+
                 transition.setFrame(view: sliderView, frame: CGRect(origin: CGPoint(x: 0.0, y: 0.0), size: CGSize(width: availableSize.width, height: 44.0)))
-                sliderView.hitTestEdgeInsets = UIEdgeInsets(top: 0.0, left: 0.0, bottom: 0.0, right: 0.0)
             }
             
             return size
@@ -308,7 +243,7 @@ public final class SliderComponent: Component {
             }
             let floatValue: CGFloat
             if let sliderView = self.sliderView {
-                floatValue = sliderView.value
+                floatValue = CGFloat(sliderView.value)
             } else if let nativeSliderView = self.nativeSliderView {
                 floatValue = CGFloat(nativeSliderView.value)
             } else {

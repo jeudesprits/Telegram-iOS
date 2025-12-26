@@ -3,6 +3,7 @@ import UIKit
 import Display
 import ComponentFlow
 import GlassBackgroundComponent
+import LiquidGlass
 
 private final class RestingBackgroundView: UIVisualEffectView {
     var isDark: Bool?
@@ -93,10 +94,12 @@ public final class LiquidLensView: UIView {
     public let contentView: UIView
     private let restingBackgroundView: RestingBackgroundView
     
-    private var legacySelectionView: GlassBackgroundView.ContentImageView?
+    private var legacySelectionView: UIView? //GlassBackgroundView.ContentImageView?
     private var legacyContentMaskView: UIView?
     private var legacyContentMaskBlobView: UIImageView?
     private var legacyLiftedContentBlobMaskView: UIImageView?
+
+    private var legacyLiquidGlassView: LiquidGlassView?
 
     public var selectedContentView: UIView {
         return self.liftedContainerView
@@ -192,7 +195,8 @@ public final class LiquidLensView: UIView {
             
             lensView.setValue(UIColor(white: 0.0, alpha: 0.1), forKey: "restingBackgroundColor")
         } else {
-            let legacySelectionView = GlassBackgroundView.ContentImageView()
+            let legacySelectionView = UIView()
+
             self.legacySelectionView = legacySelectionView
             self.backgroundView.contentView.insertSubview(legacySelectionView, at: 0)
             
@@ -216,6 +220,26 @@ public final class LiquidLensView: UIView {
             self.liftedContainerView.mask = legacyLiftedContentBlobMaskView
             
             self.containerView.addSubview(self.liftedContainerView)
+
+            let legacyLiquidGlassView = LiquidGlassView()
+            self.legacyLiquidGlassView = legacyLiquidGlassView
+
+            var settings = LiquidGlassSettings()
+            settings.glassColor = UIColor.white.withAlphaComponent(0.1)
+            settings.saturation = 1.5
+            settings.refractiveIndex = 1.15
+            settings.thickness = 10.0 // 20.0
+            settings.lightIntensity = 2.0
+            settings.chromaticAberration = 1.5
+            settings.blur = 0.0
+            legacyLiquidGlassView.settings = settings
+            legacyLiquidGlassView.visualPadding = 0.0
+            legacyLiquidGlassView.layer.shadowColor = UIColor.white.cgColor
+            legacyLiquidGlassView.layer.shadowOpacity = 0.1
+            legacyLiquidGlassView.layer.shadowRadius = 12.0
+            legacyLiquidGlassView.layer.shadowOffset = .zero
+
+            self.containerView.addSubview(legacyLiquidGlassView)
         }
     }
 
@@ -300,15 +324,19 @@ public final class LiquidLensView: UIView {
 
     private func updateLiftedLensPosition() {
         // Without this, the lens won't update its bouncing animations unless it's being moved
+        legacyLiquidGlassView?.frame = legacySelectionView?.frame ?? .zero
+        legacyLiquidGlassView?.metalView.setNeedsDisplay()
+
         if self.isApplyingLensParams {
-            return
-        }
-        guard let lensView = self.lensView else {
             return
         }
         guard let params = self.appliedLensParams else {
             return
         }
+        guard let lensView = self.lensView else {
+            return
+        }
+
         lensView.center = CGPoint(x: params.baseFrame.midX, y: params.baseFrame.midY)
     }
 
@@ -336,20 +364,23 @@ public final class LiquidLensView: UIView {
         if let legacyContentMaskView = self.legacyContentMaskView {
             transition.setFrame(view: legacyContentMaskView, frame: CGRect(origin: CGPoint(), size: params.size))
         }
-        if let legacyContentMaskBlobView = self.legacyContentMaskBlobView, let legacyLiftedContentBlobMaskView = self.legacyLiftedContentBlobMaskView, let legacySelectionView = self.legacySelectionView {
+        if let legacyContentMaskBlobView = self.legacyContentMaskBlobView, let legacyLiftedContentBlobMaskView = self.legacyLiftedContentBlobMaskView, let legacySelectionView = self.legacySelectionView, let legacyLiquidGlassView = self.legacyLiquidGlassView {
             let lensFrame = baseLensFrame.insetBy(dx: 4.0, dy: 4.0)
             let effectiveLensFrame = lensFrame.insetBy(dx: params.isLifted ? -2.0 : 0.0, dy: params.isLifted ? -2.0 : 0.0)
-            
+
             if legacyContentMaskBlobView.image?.size.height != lensFrame.height {
                 legacyContentMaskBlobView.image = generateStretchableFilledCircleImage(diameter: lensFrame.height, color: .black)
                 legacyLiftedContentBlobMaskView.image = legacyContentMaskBlobView.image
-                legacySelectionView.image = generateStretchableFilledCircleImage(diameter: lensFrame.height, color: .white)?.withRenderingMode(.alwaysTemplate)
+
+                legacyLiquidGlassView.glassCornerRadius = lensFrame.height / 2.0
+                RunLoop.main.add(Timer(timeInterval: 0.2, repeats: false, block: { _ in
+                    legacyLiquidGlassView.metalView.setNeedsDisplay()
+                }), forMode: .common)
             }
             transition.setFrame(view: legacyContentMaskBlobView, frame: effectiveLensFrame)
             transition.setFrame(view: legacyLiftedContentBlobMaskView, frame: effectiveLensFrame)
-            
-            legacySelectionView.tintColor = UIColor(white: params.isDark ? 1.0 : 0.0, alpha: params.isDark ? 0.1 : 0.075)
             transition.setFrame(view: legacySelectionView, frame: effectiveLensFrame)
+            transition.setFrame(view: legacyLiquidGlassView, frame: effectiveLensFrame)
         }
 
         transition.setFrame(view: self.restingBackgroundView, frame: CGRect(origin: CGPoint(), size: params.size))
@@ -367,6 +398,7 @@ public final class LiquidLensView: UIView {
             }
         } else if let liftedDisplayLink = self.liftedDisplayLink {
             self.liftedDisplayLink = nil
+            legacyLiquidGlassView?.metalView.setNeedsDisplay()
             liftedDisplayLink.invalidate()
         }
     }
